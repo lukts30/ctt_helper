@@ -5,6 +5,8 @@ using System.Runtime.InteropServices;
 using System.Numerics;
 using System.Drawing;
 using System.Drawing.Imaging;
+using System.Xml;
+using System.Collections.Generic;
 
 namespace ctt_helper
 {
@@ -55,32 +57,64 @@ namespace ctt_helper
         static void ReadFileAsUnormToFloat(string file,out float[,] cDstFloat) {
             ReadFileAsUnormTex(file,out ushort[,] cDstUnorm);
             csCopyUnormToFloat(cDstUnorm,out cDstFloat);  
-         } 
+         }
 
+         static void LoadXmlUnorm(string file,out ushort[,] cDstUnorm,string nodeSelect,int nodeIdx) {
+            XmlDocument doc = new XmlDocument();
+            doc.Load(file);
+            XmlNodeList nodeList = doc.DocumentElement.SelectNodes(nodeSelect);
+            XmlNode node = nodeList[nodeIdx];
+            string text = node.InnerText;
+            string[] tokens = text.Split(' ');
+            ushort[] numbers = Array.ConvertAll(tokens, ushort.Parse);
+            
+            Span<ushort> ushortView = new Span<ushort>(numbers);
+            cDstUnorm = Create2DArrayFrom1D(ushortView);
+         }
+
+         static void LoadXmlUnormToFloat(string file,out float[,] cDstFloat,string nodeSelect,int nodeIdx) {
+             LoadXmlUnorm(file,out ushort[,] cDstUnorm,nodeSelect, nodeIdx);
+             csCopyUnormToFloat(cDstUnorm,out cDstFloat);  
+         }
+
+         static void UnormSacle(ushort[,] cDstUnorm,ushort scale) {
+             for (int i = 0; i < cDstUnorm.GetLength(0); i++)
+             {
+                 for (int j = 0; j < cDstUnorm.GetLength(1); j++)
+                 {
+                     cDstUnorm[i,j] *= scale;
+                 }
+             }
+         }
+ 
 
         static void Main(string[] args)
         {
             
-            var cb = new CbTerrainCompress(cScaleFactor: new float[] { 2048f,1024f,512f },cQuantBits: new int[] { 6,7,8 },2);
+            var interpretedXmlFile = @"C:\Users\lukas\Desktop\blank\unpacked_ctt_interpreted.xml";
+            //var cb = new CbTerrainCompress(cScaleFactor: new float[] { 2048f,1024f,512f },cQuantBits: new int[] { 6,7,8 },2);
+            
+            var cb = CbTerrainCompress.CreateFromXml(interpretedXmlFile);
 
-            ReadFileAsUnormToFloat("D:\\Downsampled_66.bin",out float[,] cDstFloat66);  
+            LoadXmlUnormToFloat(interpretedXmlFile,out float[,] cDstFloat66,"//Downsampled/map",0);
             float[][,] dstFloatJagged = new float[4][,];
             dstFloatJagged[3] = cDstFloat66;
 
-            WriteTexToFile(cDstFloat66,"float_66");
-
-            var buffer = ReadUnromBuffer("D:\\unrom_132.bin");
-            var cSrc1 = Create2DArrayFrom1D(buffer);
+            LoadXmlUnorm(interpretedXmlFile,out ushort[,] cSrc1,"//Data/map",cb.cCurrentMip);
+            System.Console.WriteLine($"{cSrc1.GetLength(0)}");
+            UnormSacle(cSrc1,256);
             RunCsSynthesize(cSrc1,dstFloatJagged,cb);
             cb.cCurrentMip--;
 
-            buffer = ReadUnromBuffer("D:\\unrom_264.bin");
-            cSrc1 = Create2DArrayFrom1D(buffer);
+            LoadXmlUnorm(interpretedXmlFile,out cSrc1,"//Data/map",cb.cCurrentMip);
+            System.Console.WriteLine($"{cSrc1.GetLength(0)}");
+            UnormSacle(cSrc1,256);
             RunCsSynthesize(cSrc1,dstFloatJagged,cb);
             cb.cCurrentMip--;
 
-            buffer = ReadUnromBuffer("D:\\unrom_528.bin");
-            cSrc1 = Create2DArrayFrom1D(buffer);
+            LoadXmlUnorm(interpretedXmlFile,out cSrc1,"//Data/map",cb.cCurrentMip);
+            System.Console.WriteLine($"{cSrc1.GetLength(0)}");
+            UnormSacle(cSrc1,256);
             RunCsSynthesize(cSrc1,dstFloatJagged,cb);
             cb.cCurrentMip--;
 
@@ -88,7 +122,7 @@ namespace ctt_helper
 
             Console.WriteLine("cDstNormal: {0}",cDstNormal[0,134]);
 
-            WriteRGBToFile(cDstNormal,"normal");
+            //WriteRGBToFile(cDstNormal,"normal");
 
             WriteRGBToPngFile(cDstNormal,"normal.png");
         }
@@ -385,6 +419,40 @@ namespace ctt_helper
             //TODO:  fix hardcoded value
             this.cNumBorderTexels = 8;
             this.cNormalScale = 4096f;
+        }
+
+        public static CbTerrainCompress CreateFromXml(string file) {
+            XmlDocument doc = new XmlDocument();
+            doc.Load(file);
+
+            XmlNodeList nodeList = doc.DocumentElement.SelectNodes("//ScaleFactor");
+            var cScaleFactor = new List<float>();
+            foreach (XmlNode node in nodeList)
+            {
+                string text = node.InnerText;
+                cScaleFactor.Add(float.Parse(text));
+            }
+
+            var cQuantBits = new List<int>();
+            nodeList = doc.DocumentElement.SelectNodes("//QuantBits");
+            foreach (XmlNode node in nodeList)
+            {
+                string text = node.InnerText;
+                cQuantBits.Add(int.Parse(text));
+            }
+
+            while(cScaleFactor.Count > cQuantBits.Count) {
+                cQuantBits.Add(8);
+            }
+            /*
+            System.Console.WriteLine($"{cQuantBits[0]}");
+            System.Console.WriteLine($"{cQuantBits[1]}");
+            System.Console.WriteLine($"{cQuantBits[2]}");
+            System.Console.WriteLine("------");
+            */
+
+            var cb = new CbTerrainCompress(cScaleFactor.ToArray(),cQuantBits.ToArray(),cScaleFactor.Count-1);
+            return cb;
         }
     }
     
