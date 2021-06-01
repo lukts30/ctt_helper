@@ -2,6 +2,9 @@
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Numerics;
+using System.Drawing;
+using System.Drawing.Imaging;
 
 namespace ctt_helper
 {
@@ -12,6 +15,29 @@ namespace ctt_helper
             var cDstUnorm = Create2DArrayFrom1D(buffer);
             Console.WriteLine("{0}",cDstUnorm.Length);
             Console.WriteLine("ww {0}",TEXELFETCH2D(cDstUnorm,14,2));
+        }
+
+        static void WriteRGBToPngFile((float X, float Y, float Z)[,] tex,string file)
+        {   
+            var width = tex.GetLength(0);
+            var height = tex.GetLength(1);
+            Bitmap bmp = new Bitmap(width, height, System.Drawing.Imaging.PixelFormat.Format32bppRgb);
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    Color newColor = Color.FromArgb((int)Math.Floor(tex[y,x].X*255.0),(int)Math.Floor(tex[y,x].Y*255.0),(int)Math.Floor(tex[y,x].Z*255.0));
+                    bmp.SetPixel(x,y,newColor);
+                }
+            }
+            bmp.Save(file, ImageFormat.Png);
+        }
+
+        static void WriteRGBToFile((float X, float Y, float Z)[,] tex,string file) {
+            var float1D = Create1DArrayFrom2D(tex);
+            var arraySpanFloat = new Span<float>(float1D);
+            Span<byte> bytesView = MemoryMarshal.Cast<float, byte>(arraySpanFloat);
+            File.WriteAllBytes(file, bytesView.ToArray());
         }
 
         static void WriteTexToFile(float[,] tex,string file) {
@@ -58,6 +84,13 @@ namespace ctt_helper
             RunCsSynthesize(cSrc1,dstFloatJagged,cb);
             cb.cCurrentMip--;
 
+            csComputeNormalMap(dstFloatJagged[0],cb,out (float X, float Y, float Z)[,] cDstNormal);
+
+            Console.WriteLine("cDstNormal: {0}",cDstNormal[0,134]);
+
+            WriteRGBToFile(cDstNormal,"normal");
+
+            WriteRGBToPngFile(cDstNormal,"normal.png");
         }
 
         static void RunCsSynthesize(ushort[,] cSrc1,float[][,] dstFloatJagged,CbTerrainCompress cb) {
@@ -89,6 +122,27 @@ namespace ctt_helper
                 }
             }
             return cDstUnorm;
+        }
+
+        static float[] Create1DArrayFrom2D((float X, float Y, float Z)[,] input) {
+            int length_rk = input.GetLength(0);
+            System.Console.WriteLine("{0}",length_rk);
+            int length = input.Length;
+            
+            
+            float[] cDst1D = new float[length*3];
+            for (int i = 0; i < length_rk; i++)
+            {
+                for (int j = 0; j < length_rk; j++)
+                {
+                    var idx = (i*length_rk+j)*3;
+                    
+                    cDst1D[idx] = input[i,j].X;
+                    cDst1D[idx+1] = input[i,j].Y;
+                    cDst1D[idx+2] = input[i,j].Z;
+                }
+            }
+            return cDst1D;
         }
 
         static float[] Create1DArrayFrom2D(float[,] input) {
@@ -279,17 +333,58 @@ namespace ctt_helper
 
             return 0.0f;
         }
+
+        static void csComputeNormalMap(float[,] cSrc,CbTerrainCompress cb,out (float X, float Y,float Z)[,] cDstNormal)
+        {
+            int length = 512;
+
+            cDstNormal = new (float X, float Y,float Z) [length,length];
+
+            for (int y = 0; y < length; y++)
+            {
+                for (int x = 0; x < length; x++)
+                {
+                    // Respect source texture's additional pixel border (e.g. is 514 instead of 512)
+                    // int2 coord = int2(dtID.xy) + cb.cNumBorderTexels;
+                    int coordX = x + cb.cNumBorderTexels;
+                    int coordY = y + cb.cNumBorderTexels;
+
+                    float h0 = TEXELFETCH2D(cSrc, coordX,coordY);
+                    float hx = TEXELFETCH2D(cSrc, coordX+1,coordY+0);
+                    float hz = TEXELFETCH2D(cSrc, coordX+0,coordY+1);
+
+                    var dx = new Vector3(1, (hx - h0) * cb.cNormalScale, 0);
+                    var dz = new Vector3(0, (hz - h0) * cb.cNormalScale, 1);
+                    
+                    var n = Vector3.Normalize(Vector3.Cross(dz,dx));
+                    
+                    n.X = n.X * 0.5f + 0.5f;
+                    n.Y = n.Y * 0.5f + 0.5f;
+                    n.Z = n.Z * 0.5f + 0.5f;
+
+                    // Note: Swizzling because we compress RG to BC5 (X and Z; Y will be reconstructed)
+
+                    cDstNormal[y,x] = (n.X,n.Z,n.Y);
+                }
+            }
+        }
     }
 
     class CbTerrainCompress {
         public float[] cScaleFactor { get; }
         public int[] cQuantBits { get; } 
+
+        public int cNumBorderTexels { get; } 
+        public float cNormalScale { get; } 
         public int cCurrentMip { get; set; }
 
         public CbTerrainCompress(float[] cScaleFactor,int[] cQuantBits,int cCurrentMip) {
             this.cScaleFactor = cScaleFactor;
             this.cQuantBits = cQuantBits;
             this.cCurrentMip = cCurrentMip;
+            //TODO:  fix hardcoded value
+            this.cNumBorderTexels = 8;
+            this.cNormalScale = 4096f;
         }
     }
     
