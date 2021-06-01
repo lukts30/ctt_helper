@@ -7,8 +7,16 @@ namespace ctt_helper
 {
     class Program
     {
+        static void TestDimension() {
+            var buffer = ReadUnromBuffer("C:\\Users\\lukas\\Desktop\\100_25_pixel.bin");
+            var cDstUnorm = Create2DArrayFrom1D(buffer);
+            Console.WriteLine("{0}",cDstUnorm.Length);
+            Console.WriteLine("ww {0}",TEXELFETCH2D(cDstUnorm,14,2));
+        }
+
         static void Main(string[] args)
         {
+            TestDimension();
             
             var buffer = ReadUnromBuffer("D:\\Downsampled_66.bin");
             var cDstUnorm = Create2DArrayFrom1D(buffer);
@@ -72,17 +80,17 @@ namespace ctt_helper
             Debug.Assert(cSrc1.GetLength(0) == cSrc1.GetLength(1));
             cDstFloat = new float[length,length];
 
-            for (int i = 0; i < length; i++)
+            for (int y = 0; y < length; y++)
             {
-                for (int j = 0; j < length; j++)
+                for (int x = 0; x < length; x++)
                 {
-                    cDstFloat[i,j] = TEXELFETCH2D(cSrc1,i,j);
+                    cDstFloat[y,x] = TEXELFETCH2D(cSrc1,x,y);
                 }
             }
         }
 
         static float TEXELFETCH2D(ushort[,] cSrc1,int x,int y) {
-            return UnromToFloat(cSrc1[x,y]);
+            return UnromToFloat(cSrc1[y,x]);
         }
 
         static float UnromToFloat(ushort unorm) {
