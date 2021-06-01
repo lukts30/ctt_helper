@@ -38,18 +38,35 @@ namespace ctt_helper
             var cb = new CbTerrainCompress(cScaleFactor: new float[] { 2048f,1024f,512f },cQuantBits: new int[] { 6,7,8 },2);
 
             ReadFileAsUnormToFloat("D:\\Downsampled_66.bin",out float[,] cDstFloat66);  
+            float[][,] dstFloatJagged = new float[4][,];
+            dstFloatJagged[3] = cDstFloat66;
+
             WriteTexToFile(cDstFloat66,"float_66");
 
-            RunCsSynthesize(cDstFloat66,cb);
-        }
-
-        static void RunCsSynthesize(float[,] cSrc2,CbTerrainCompress cb) {
             var buffer = ReadUnromBuffer("D:\\unrom_132.bin");
             var cSrc1 = Create2DArrayFrom1D(buffer);
-            csSynthesize(cSrc1,cSrc2, out float[,] cDstFloat,cb);
-            Console.WriteLine("132: {0}",TEXELFETCH2D(cDstFloat,131,0));
+            RunCsSynthesize(cSrc1,dstFloatJagged,cb);
+            cb.cCurrentMip--;
 
-            WriteTexToFile(cDstFloat,"float_132");
+            buffer = ReadUnromBuffer("D:\\unrom_264.bin");
+            cSrc1 = Create2DArrayFrom1D(buffer);
+            RunCsSynthesize(cSrc1,dstFloatJagged,cb);
+            cb.cCurrentMip--;
+
+            buffer = ReadUnromBuffer("D:\\unrom_528.bin");
+            cSrc1 = Create2DArrayFrom1D(buffer);
+            RunCsSynthesize(cSrc1,dstFloatJagged,cb);
+            cb.cCurrentMip--;
+
+        }
+
+        static void RunCsSynthesize(ushort[,] cSrc1,float[][,] dstFloatJagged,CbTerrainCompress cb) {
+            float[,] cSrc2 = dstFloatJagged[cb.cCurrentMip+1];
+            csSynthesize(cSrc1,cSrc2, out float[,] cDstFloat,cb);
+            Console.WriteLine("132: {0}",TEXELFETCH2D(cDstFloat,101,0));
+
+            dstFloatJagged[cb.cCurrentMip] = cDstFloat;
+            //WriteTexToFile(cDstFloat,"float_132");
         }
 
         static Span<ushort> ReadUnromBuffer(string fileName) {
