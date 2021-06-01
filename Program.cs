@@ -16,14 +16,11 @@ namespace ctt_helper
 
         static void Main(string[] args)
         {
-            TestDimension();
-            
             var buffer = ReadUnromBuffer("D:\\Downsampled_66.bin");
             var cDstUnorm = Create2DArrayFrom1D(buffer);
-            Console.WriteLine("{0}",cDstUnorm[0,65]);
+
             
             csCopyUnormToFloat(cDstUnorm,out float[,] cDstFloat);
-            Console.WriteLine("{0}",cDstFloat[64,65]);
 
             var float1D = Create1DArrayFrom2D(cDstFloat);
             var arraySpanFloat = new Span<float>(float1D);
@@ -35,7 +32,6 @@ namespace ctt_helper
             byte[] buff = File.ReadAllBytes(fileName);
             var arraySpan = new Span<byte>(buff);
             Span<ushort> ushortView = MemoryMarshal.Cast<byte, ushort>(arraySpan);
-            Console.WriteLine("{0}",ushortView[^1]);
             return ushortView;
         }
 
@@ -48,7 +44,6 @@ namespace ctt_helper
                 for (int j = 0; j < length; j++)
                 {
                     var idx = i*length+j;
-                    //Console.WriteLine("{0}",idx);
                     cDstUnorm[i,j] = input[idx];
                 }
             }
@@ -91,6 +86,10 @@ namespace ctt_helper
 
         static float TEXELFETCH2D(ushort[,] cSrc1,int x,int y) {
             return UnromToFloat(cSrc1[y,x]);
+        }
+
+        static float TEXELFETCH2D(float[,] cSrc1,int x,int y) {
+            return cSrc1[y,x];
         }
 
         static float UnromToFloat(ushort unorm) {
