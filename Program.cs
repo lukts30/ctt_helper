@@ -34,17 +34,20 @@ namespace ctt_helper
 
         static void Main(string[] args)
         {
-            ReadFileAsUnormToFloat("D:\\Downsampled_66.bin",out float[,] cDstFloat);  
-            WriteTexToFile(cDstFloat,"float_66");
+            
+            var cb = new CbTerrainCompress(cScaleFactor: new float[] { 2048f,1024f,512f },cQuantBits: new int[] { 6,7,8 },2);
 
-            RunCsSynthesize(cDstFloat);
+            ReadFileAsUnormToFloat("D:\\Downsampled_66.bin",out float[,] cDstFloat66);  
+            WriteTexToFile(cDstFloat66,"float_66");
+
+            RunCsSynthesize(cDstFloat66,cb);
         }
 
-        static void RunCsSynthesize(float[,] cSrc2) {
+        static void RunCsSynthesize(float[,] cSrc2,CbTerrainCompress cb) {
             var buffer = ReadUnromBuffer("D:\\unrom_132.bin");
             var cSrc1 = Create2DArrayFrom1D(buffer);
-            csSynthesize(cSrc1,cSrc2, out float[,] cDstFloat);
-            Console.WriteLine("132: {0}",TEXELFETCH2D(cDstFloat,130,131));
+            csSynthesize(cSrc1,cSrc2, out float[,] cDstFloat,cb);
+            Console.WriteLine("132: {0}",TEXELFETCH2D(cDstFloat,131,0));
 
             WriteTexToFile(cDstFloat,"float_132");
         }
@@ -117,7 +120,26 @@ namespace ctt_helper
             return (float) unorm / (float) ushort.MaxValue;
         }
 
-        static void csSynthesize(ushort[,] cSrc1,float[,] cSrc2,out float[,] cDstFloat)
+        static float Dequantize(float val, int miplevel, CbTerrainCompress cb) {
+            // e.g. bits = 3 has value range (-4, 3) (two's complement)
+            int totalRange	= 1 << cb.cQuantBits[miplevel];
+            int halfRange	= 1 << (cb.cQuantBits[miplevel] - 1);
+            int minVal		= -halfRange;
+            int maxVal		=  halfRange - 1;
+
+            // (0, totalRange) --> (minVal, maxVal)
+            float v = (val * 255) + minVal;
+
+            // (-1, 1) --> (minVal, maxVal)
+            float dequant = (float)v / (cb.cScaleFactor[miplevel] * halfRange);
+
+            /* DISABLE_QUANTIZATION
+                dequant = (val * 2 - 1);
+            */
+            return dequant;
+        }
+
+        static void csSynthesize(ushort[,] cSrc1,float[,] cSrc2,out float[,] cDstFloat, CbTerrainCompress cb)
         {
             int length = cSrc1.GetLength(0);
             cDstFloat = new float[length,length];
@@ -132,8 +154,9 @@ namespace ctt_helper
                     float lo = SampleBicubic(dtX,dtY, cSrc2, cSrc2.GetLength(0), cSrc2.GetLength(0));
                     float hi = TEXELFETCH2D(cSrc1, x,y);
 
-                    //hi = Dequantize(hi, cCurrentMip); // (val * 2 - 1);
-                    hi = (hi * 2f - 1f);
+
+                    hi = Dequantize(hi, cb.cCurrentMip, cb);
+                    //hi = (hi * 2f - 1f);
                     //cDstFloat[dtID.xy] = lo + hi;
                     cDstFloat[y,x] = lo + hi;
                 }
@@ -238,6 +261,18 @@ namespace ctt_helper
             // 	}
 
             return 0.0f;
+        }
+    }
+
+    class CbTerrainCompress {
+        public float[] cScaleFactor { get; }
+        public int[] cQuantBits { get; } 
+        public int cCurrentMip { get; set; }
+
+        public CbTerrainCompress(float[] cScaleFactor,int[] cQuantBits,int cCurrentMip) {
+            this.cScaleFactor = cScaleFactor;
+            this.cQuantBits = cQuantBits;
+            this.cCurrentMip = cCurrentMip;
         }
     }
     
